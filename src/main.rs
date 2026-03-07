@@ -1,6 +1,9 @@
 use iced::widget::{button, column, container, row, scrollable, text, text_input, horizontal_rule, Space, svg, stack, image};
 use iced::{Alignment, Element, Length, Color, Theme, Task, alignment};
 use rusqlite::{params, Connection};
+use std::fs::{self, OpenOptions}; // Menambahkan fs di sini
+use std::io::Write;
+use std::time::Duration;
 
 // ==========================================
 // UI SETTINGS - EXACTLY FROM main.rs
@@ -36,7 +39,8 @@ pub fn main() -> iced::Result {
             decorations: false,
             ..Default::default()
         })
-        .theme(|_| Theme::default()) 
+.theme(|_| Theme::default())
+        .subscription(Guard::subscription) // WAJIB ADA INI
         .run()
 }
 
@@ -48,13 +52,34 @@ struct BlacklistEntry { id: i32, domain: String, hits: i32 }
 
 #[derive(Debug, Clone)]
 enum Message {
-    InputChanged(String), PasswordChanged(String), PasswordUnlockInput(String),
-    AddDomain, StartGuard, StopGuard,
-    ToggleEditPassword, SavePassword,
-    ChangePage(Page), CloseWindow, MinimizeWindow,
-    OpenEditPopup, CloseEditPopup, CancelEdit,
-    ToggleSelectDomain(i32), DeleteSelected,
-    CheckViolation(String), UnlockSystem,
+    // --- Navigasi ---
+    SetPage(Page),              // Sesuaikan dengan UI yang memanggil SetPage
+    ChangePage(Page),           // Jika sidebar pakai ini
+    
+    // --- Input ---
+    InputChanged(String),
+    PasswordChanged(String),    
+    PasswordUnlockInput(String), // Ini yang diminta oleh error di baris 377
+    
+    // --- Window ---
+    CloseWindow, 
+    MinimizeWindow,
+
+    // --- Manajemen Domain ---
+    AddDomain,
+    OpenEditPopup,
+    CloseEditPopup,
+    CancelEdit,
+    ToggleSelectForDelete(i32), 
+    DeleteSelected,
+
+    // --- Guard ---
+    StartGuard,
+    StopGuard,
+    ToggleEditPassword,
+    SavePassword,
+    CheckViolation(String),
+    UnlockSystem,
 }
 
 struct Guard {
@@ -95,80 +120,238 @@ impl Default for Guard {
 }
 
 impl Guard {
-    fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::InputChanged(s) => self.new_domain = s,
-            Message::PasswordChanged(s) => self.password_admin = s,
-            Message::PasswordUnlockInput(s) => self.unlock_input = s,
-            Message::AddDomain => {
-                if !self.new_domain.is_empty() {
-                    let domain = self.new_domain.clone();
-                    if let Ok(id) = save_domain_to_db(&domain) {
-                        self.blacklist.push(BlacklistEntry { id, domain, hits: 0 });
-                        self.new_domain.clear();
-                    }
-                }
-            }
-            Message::StartGuard => self.is_running = true,
-            Message::StopGuard => self.is_running = false,
-            Message::ToggleEditPassword => self.is_editing_password = true,
-            Message::SavePassword => {
+fn update(&mut self, message: Message) -> Task<Message> {
+    match message {
+// 1. Agar tulisan di kotak input berubah saat diketik
+        Message::PasswordChanged(new_val) => {
+            self.password_admin = new_val; // Menghubungkan ketikan ke variabel password
+        }
+
+        // 2. Agar status edit berubah (tombol Update ke Simpan)
+        Message::ToggleEditPassword => {
+            self.is_editing_password = !self.is_editing_password;
+        }
+
+        // 3. Agar password tersimpan permanen ke Database
+        Message::SavePassword => {
+            if !self.password_admin.is_empty() {
+                // Simpan password baru ke database guard_data.db
                 let _ = update_password_db(&self.password_admin);
+                
+                // Matikan mode edit agar input terkunci kembali
                 self.is_editing_password = false;
+                
+                println!("Password admin telah diperbarui.");
             }
-            Message::ChangePage(p) => self.current_page = p,
-            Message::CloseWindow => return iced::window::get_latest().and_then(iced::window::close),
-            Message::MinimizeWindow => return iced::window::get_latest().and_then(|id| iced::window::minimize(id, true)),
-            
-            Message::OpenEditPopup => {
-                self.is_showing_edit_popup = true;
-                self.has_deleted = false;
-                self.selected_for_delete.clear();
-                self.temp_blacklist = self.blacklist.clone();
-            }
-            Message::CloseEditPopup => {
-                // Hapus dari database saat klik Simpan
-                for &id in &self.selected_for_delete { 
-                    let _ = delete_domain_from_db(id); 
-                }
-                self.blacklist = self.temp_blacklist.clone();
-                self.is_showing_edit_popup = false;
-                self.has_deleted = false;
-            }
-            Message::CancelEdit => {
-                self.is_showing_edit_popup = false;
-                self.has_deleted = false;
-            }
-            Message::ToggleSelectDomain(id) => {
-                if self.selected_for_delete.contains(&id) { self.selected_for_delete.retain(|&x| x != id); }
-                else { self.selected_for_delete.push(id); }
-            }
-            Message::DeleteSelected => {
-                self.temp_blacklist.retain(|e| !self.selected_for_delete.contains(&e.id));
-                self.selected_for_delete.clear();
-                self.has_deleted = true; 
-            }
-            Message::CheckViolation(domain) => {
-                if self.is_running {
-                    self.violation_count += 1;
-                    let _ = increment_hits_db(&domain);
-                    if self.violation_count >= 3 {
-                        self.is_hard_locked = true;
-                        return iced::window::get_latest().and_then(|id| iced::window::change_mode(id, iced::window::Mode::Fullscreen));
+        }
+        // --- NAVIGASI SIDEBAR ---
+        Message::ChangePage(page) | Message::SetPage(page) => {
+            self.current_page = page; // Pastikan menggunakan current_page
+        }
+
+        // --- KONTROL JENDELA ---
+        Message::MinimizeWindow => {
+            return iced::window::get_latest().and_then(|id| {
+                iced::window::minimize(id, true)
+            });
+        }
+        Message::CloseWindow => {
+            return iced::window::get_latest().and_then(iced::window::close);
+        }
+
+        // --- MANAJEMEN DOMAIN ---
+        Message::InputChanged(val) => self.new_domain = val,
+        
+        Message::AddDomain => {
+            if !self.new_domain.is_empty() {
+                let cleaned = self.new_domain
+                    .replace("https://", "").replace("http://", "").replace("www.", "")
+                    .split('/').next().unwrap_or("").trim().to_string();
+
+                if !cleaned.is_empty() {
+                    if let Ok(id) = save_domain_to_db(&cleaned) {
+                        self.blacklist.push(BlacklistEntry { id, domain: cleaned.clone(), hits: 0 });
+                        self.new_domain.clear();
+                        if self.is_running { 
+                            let _ = self.apply_hosts_block(); 
+                        }
                     }
-                }
-            }
-            Message::UnlockSystem => {
-                if self.unlock_input == self.password_admin {
-                    self.is_hard_locked = false;
-                    self.violation_count = 0;
-                    self.unlock_input.clear();
-                    return iced::window::get_latest().and_then(|id| iced::window::change_mode(id, iced::window::Mode::Windowed));
                 }
             }
         }
-        Task::none()
+
+        // --- MODAL & DELETE ---
+        Message::OpenEditPopup => {
+            self.temp_blacklist = self.blacklist.clone();
+            self.selected_for_delete.clear();
+            self.has_deleted = false;
+            self.is_showing_edit_popup = true;
+        }
+
+        Message::ToggleSelectForDelete(id) => {
+            if let Some(pos) = self.selected_for_delete.iter().position(|&x| x == id) {
+                self.selected_for_delete.remove(pos);
+            } else {
+                self.selected_for_delete.push(id);
+            }
+        }
+
+        Message::DeleteSelected => {
+            self.temp_blacklist.retain(|e| !self.selected_for_delete.contains(&e.id));
+            self.has_deleted = true;
+        }
+
+        Message::CloseEditPopup => {
+            for &id in &self.selected_for_delete {
+                let _ = delete_domain_from_db(id);
+            }
+            self.blacklist = self.temp_blacklist.clone();
+            self.is_showing_edit_popup = false;
+            self.selected_for_delete.clear();
+            self.has_deleted = false;
+
+            if self.is_running { let _ = self.apply_hosts_block(); }
+            else { let _ = self.clear_hosts_block(); }
+        }
+
+        Message::CancelEdit => {
+            self.is_showing_edit_popup = false;
+            self.selected_for_delete.clear();
+            self.has_deleted = false;
+        }
+
+        // --- GUARD CONTROL ---
+        Message::StartGuard => {
+            self.is_running = true;
+            let _ = self.apply_hosts_block();
+        }
+
+        Message::StopGuard => {
+            self.is_running = false;
+            let _ = self.clear_hosts_block();
+        }
+
+        // --- KEAMANAN ---
+        Message::CheckViolation(info) => {
+            // Gunakan info agar warning hilang
+            if self.is_running && !self.is_hard_locked {
+                let keywords: Vec<String> = self.blacklist.iter()
+                    .map(|e| e.domain.to_lowercase().replace("www.", "").replace(".com", ""))
+                    .collect();
+
+                if let Some(detected) = self.check_window_titles(keywords) {
+                    println!("Pelanggaran: {} | Status: {}", detected, info);
+                    let _ = increment_hits_db(&detected); 
+                    self.violation_count += 1;
+                    self.is_hard_locked = true;
+                    return iced::window::get_latest().and_then(|id| {
+                        iced::window::change_mode(id, iced::window::Mode::Fullscreen)
+                    });
+                }
+            }
+        }
+
+        Message::PasswordUnlockInput(val) => self.unlock_input = val,
+        
+        Message::UnlockSystem => {
+            if self.unlock_input == self.password_admin {
+                self.is_hard_locked = false;
+                self.unlock_input.clear();
+                return iced::window::get_latest().and_then(|id| {
+                    iced::window::change_mode(id, iced::window::Mode::Windowed)
+                });
+            } else {
+                self.unlock_input.clear();
+            }
+        }
+        
+        _ => {}
     }
+    Task::none()
+}
+
+pub fn subscription(&self) -> iced::Subscription<Message> {
+    if self.is_running {
+        iced::time::every(std::time::Duration::from_millis(1000))
+            .map(|_| Message::CheckViolation("Watchdog Aktif".to_string()))
+    } else {
+        iced::Subscription::none()
+    }
+}
+fn check_window_titles(&self, keywords: Vec<String>) -> Option<String> {
+    use std::process::Command;
+
+    // Ambil semua judul jendela yang aktif
+    let output = Command::new("powershell")
+        .args(&[
+            "-NoProfile",
+            "-Command",
+            "Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object -ExpandProperty MainWindowTitle"
+        ])
+        .output();
+
+    if let Ok(out) = output {
+        let titles = String::from_utf8_lossy(&out.stdout).to_lowercase();
+        
+        for kw in keywords {
+            // Jika judul jendela mengandung kata kunci (misal "youtube")
+            if !kw.is_empty() && titles.contains(&kw) {
+                // Kill SEMUA browser secara paksa
+                let _ = Command::new("taskkill").args(&["/F", "/IM", "chrome.exe"]).spawn();
+                let _ = Command::new("taskkill").args(&["/F", "/IM", "msedge.exe"]).spawn();
+                let _ = Command::new("taskkill").args(&["/F", "/IM", "firefox.exe"]).spawn();
+                return Some(kw);
+            }
+        }
+    }
+    None
+}
+
+fn apply_hosts_block(&self) -> std::io::Result<()> {
+    self.clear_hosts_block()?; // Bersihkan dulu agar tidak duplikat
+    let hosts_path = "C:\\Windows\\System32\\drivers\\etc\\hosts";
+    
+    let mut file = OpenOptions::new().append(true).open(hosts_path)?;
+    writeln!(file, "\n# --- GUARD CHILDREN START ---")?;
+    
+    for entry in &self.blacklist {
+        writeln!(file, "127.0.0.1 {}", entry.domain)?;
+        writeln!(file, "::1 {}", entry.domain)?;
+        writeln!(file, "127.0.0.1 www.{}", entry.domain)?;
+        writeln!(file, "::1 www.{}", entry.domain)?;
+    }
+    
+    writeln!(file, "# --- GUARD CHILDREN END ---")?;
+    Ok(())
+}
+
+fn clear_hosts_block(&self) -> std::io::Result<()> {
+    let hosts_path = "C:\\Windows\\System32\\drivers\\etc\\hosts";
+    
+    // Membaca file, jika tidak ada/error kita abaikan
+    let content = fs::read_to_string(hosts_path).unwrap_or_default();
+    
+    // Filter baris secara eksplisit untuk menghapus jejak program
+    let clean_lines: Vec<String> = content
+        .lines()
+        .filter(|line: &&str| { // Memberikan tipe eksplisit agar tidak error E0282
+            !line.contains("# --- GUARD CHILDREN") && 
+            !line.contains("127.0.0.1") && 
+            !line.contains("::1") || 
+            // Tetap simpan baris localhost bawaan Windows
+            line.trim() == "127.0.0.1 localhost" || line.trim() == "::1 localhost"
+        })
+        .map(|s| s.to_string())
+        .collect();
+
+    let mut file = OpenOptions::new().write(true).truncate(true).open(hosts_path)?;
+    for line in clean_lines {
+        if !line.trim().is_empty() {
+            writeln!(file, "{}", line)?;
+        }
+    }
+    Ok(())
+}
 
     fn view(&self) -> Element<'_, Message> {
         let window_controls = row![
@@ -360,50 +543,113 @@ impl Guard {
         }
     }
 
-    fn view_edit_modal(&self) -> Element<'_, Message> {
-        let is_anything_selected = !self.selected_for_delete.is_empty();
-        let can_save = self.has_deleted;
+fn view_edit_modal(&self) -> Element<'_, Message> {
+    let is_anything_selected = !self.selected_for_delete.is_empty();
+    let can_save = self.has_deleted;
 
-        let modal_content = column![
-            text("Kelola Daftar Blokir").size(20).font(iced::Font { weight: iced::font::Weight::Bold, ..Default::default() }),
-            Space::with_height(Length::Fixed(15.0)),
-            scrollable(column(self.temp_blacklist.iter().enumerate().map(|(i, e)| {
+    // 1. KONTEN MODAL (Struktur kolom utama dari main.rs)
+    let modal_content = column![
+        // Judul Modal (Tanpa .bold() sesuai permintaan Anda)
+        text("Manajemen Daftar Blokir").size(20),
+        Space::with_height(Length::Fixed(15.0)),
+        
+        // 2. AREA DAFTAR (Menggunakan scrollable agar tidak merusak layout)
+        scrollable(column(
+            self.temp_blacklist.iter().enumerate().map(|(i, e)| {
                 let is_selected = self.selected_for_delete.contains(&e.id);
                 let row_bg = if i % 2 != 0 { Color::from_rgb(0.97, 0.97, 0.98) } else { Color::WHITE };
-                container(button(row![
-                    text(if is_selected { "●" } else { "○" }).size(14).color(if is_selected { COLOR_DELETE } else { INACTIVE_TEXT }),
-                    text(&e.domain).width(Length::Fill),
-                ].spacing(12).align_y(Alignment::Center)).on_press(Message::ToggleSelectDomain(e.id)).padding(10).width(Length::Fill)
-                .style(move |_, status| button::Style {
-                    background: if is_selected { Some(HOVER_COLOR.into()) } else if status == button::Status::Hovered { Some(Color::from_rgb(0.93, 0.93, 0.93).into()) } else { None },
-                    ..Default::default()
-                }))
-                .style(move |_| container::Style { background: Some(row_bg.into()), border: iced::border::Border { color: Color::from_rgb(0.9, 0.9, 0.9), width: 0.5, ..Default::default() }, ..Default::default() }).into()
-            }).collect::<Vec<_>>())).height(Length::Fixed(250.0)),
-            Space::with_height(Length::Fixed(20.0)),
-            row![
-                button(text("Hapus Terpilih")).on_press_maybe(if is_anything_selected { Some(Message::DeleteSelected) } else { None }).padding(10)
-                .style(move |_, _| button::Style { 
-                    background: Some((if is_anything_selected { COLOR_DELETE } else { COLOR_DISABLED }).into()), 
-                    text_color: Color::WHITE, border: iced::border::Border { radius: 5.0.into(), ..Default::default() }, ..Default::default() 
-                }),
-                Space::with_width(Length::Fill),
-                button(text("Simpan")).on_press_maybe(if can_save { Some(Message::CloseEditPopup) } else { None }).padding(10)
-                .style(move |_, _| button::Style { 
-                    background: Some((if can_save { COLOR_GUARD_START } else { COLOR_DISABLED }).into()), 
-                    text_color: Color::WHITE, border: iced::border::Border { radius: 5.0.into(), ..Default::default() }, ..Default::default() 
-                }),
-                button(text("Cancel")).on_press(Message::CancelEdit).padding(10).style(button::secondary),
-            ].spacing(10)
-        ].padding(25).width(Length::Fixed(450.0));
 
-        container(modal_content).style(|_| container::Style { 
+                container(
+                    button(row![
+                        text(if is_selected { "●" } else { "○" }).size(14).color(if is_selected { COLOR_DELETE } else { INACTIVE_TEXT }),
+                        text(&e.domain).width(Length::Fill),
+                    ].spacing(12).align_y(Alignment::Center))
+                    .on_press(Message::ToggleSelectForDelete(e.id)) // Menggunakan ToggleSelectForDelete
+                    .padding(10)
+                    .style(move |_, status| button::Style {
+                        background: if is_selected { Some(HOVER_COLOR.into()) } 
+                                   else if status == button::Status::Hovered { Some(Color::from_rgb(0.93, 0.93, 0.93).into()) } 
+                                   else { None },
+                        ..Default::default()
+                    })
+                )
+                .style(move |_| container::Style { 
+                    background: Some(row_bg.into()), 
+                    border: iced::border::Border { color: Color::from_rgb(0.9, 0.9, 0.9), width: 0.5, ..Default::default() },
+                    ..Default::default() 
+                })
+                .into()
+            }).collect::<Vec<_>>()
+        )).height(Length::Fixed(250.0)),
+
+        Space::with_height(Length::Fixed(20.0)),
+
+        // 3. BARIS TOMBOL (Footer)
+        row![
+            // Tombol Hapus Terpilih
+            button(text("Hapus Terpilih").size(14))
+                .on_press_maybe(if !self.has_deleted && is_anything_selected { Some(Message::DeleteSelected) } else { None })
+                .padding(10)
+                .style(move |_, _| {
+                    let bg = if !self.has_deleted && is_anything_selected { COLOR_DELETE } else { COLOR_DISABLED };
+                    button::Style { 
+                        background: Some(bg.into()), 
+                        text_color: Color::WHITE, 
+                        border: iced::border::Border { radius: 5.0.into(), ..Default::default() },
+                        ..Default::default()
+                    }
+                }),
+
+            Space::with_width(Length::Fill),
+
+            // Tombol Simpan
+            button(text("Simpan").size(14))
+                .on_press_maybe(if can_save { Some(Message::CloseEditPopup) } else { None })
+                .padding(10)
+                .style(move |_, _| {
+                    let bg = if can_save { COLOR_GUARD_START } else { COLOR_DISABLED };
+                    button::Style { 
+                        background: Some(bg.into()), 
+                        text_color: Color::WHITE, 
+                        border: iced::border::Border { radius: 5.0.into(), ..Default::default() },
+                        ..Default::default()
+                    }
+                }),
+
+            // Tombol Cancel
+            button(text("Cancel").size(14))
+                .on_press(Message::CancelEdit)
+                .padding(10)
+                .style(|_, _| button::Style {
+                    background: Some(Color::from_rgb(0.6, 0.6, 0.6).into()),
+                    text_color: Color::WHITE,
+                    border: iced::border::Border { radius: 5.0.into(), ..Default::default() },
+                    ..Default::default()
+                }),
+        ].spacing(10)
+    ]
+    .padding(25)
+    .width(Length::Fixed(500.0)); // Diperlebar sedikit dari main.rs agar tidak sesak
+
+    // 4. WRAPPER CONTAINER (Sesuai dengan style main.rs)
+    container(modal_content)
+        .style(|_| container::Style { 
             background: Some(Color::WHITE.into()),
-            border: iced::border::Border { radius: 12.0.into(), width: 1.0, color: Color::from_rgb(0.8, 0.8, 0.8), ..Default::default() },
-            shadow: iced::Shadow { color: Color { a: 0.2, ..Color::BLACK }, offset: iced::Vector::new(0.0, 4.0), blur_radius: 10.0 },
+            border: iced::border::Border { 
+                radius: 12.0.into(), 
+                width: 1.0, 
+                color: Color::from_rgb(0.8, 0.8, 0.8), 
+                ..Default::default() 
+            },
+            shadow: iced::Shadow { 
+                color: Color { a: 0.2, ..Color::BLACK }, 
+                offset: iced::Vector::new(0.0, 4.0), 
+                blur_radius: 10.0 
+            },
             ..Default::default() 
-        }).into()
-    }
+        })
+        .into()
+}
 
     fn view_security(&self) -> Element<'_, Message> {
         let (btn_text, btn_msg, btn_color, txt_color) = if self.is_editing_password {
