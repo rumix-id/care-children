@@ -1,0 +1,9 @@
+[package]
+name = "guard-children-internet"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+iced = { version = "0.13.1", features = ["tokio", "advanced", "image", "svg"] }
+rusqlite = { version = "0.31.0", features = ["bundled"] }
+device_query = "4.0.1"
