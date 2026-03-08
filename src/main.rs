@@ -3,7 +3,6 @@ use iced::{Alignment, Element, Length, Color, Theme, Task, alignment};
 use rusqlite::{params, Connection};
 use std::fs::{self, OpenOptions}; // Menambahkan fs di sini
 use std::io::Write;
-use std::time::Duration;
 
 // ==========================================
 // UI SETTINGS - EXACTLY FROM main.rs
@@ -53,7 +52,6 @@ struct BlacklistEntry { id: i32, domain: String, hits: i32 }
 #[derive(Debug, Clone)]
 enum Message {
     // --- Navigasi ---
-    SetPage(Page),              // Sesuaikan dengan UI yang memanggil SetPage
     ChangePage(Page),           // Jika sidebar pakai ini
     
     // --- Input ---
@@ -145,9 +143,9 @@ fn update(&mut self, message: Message) -> Task<Message> {
             }
         }
         // --- NAVIGASI SIDEBAR ---
-        Message::ChangePage(page) | Message::SetPage(page) => {
-            self.current_page = page; // Pastikan menggunakan current_page
-        }
+Message::ChangePage(page) => {
+    self.current_page = page;
+}
 
         // --- KONTROL JENDELA ---
         Message::MinimizeWindow => {
@@ -163,10 +161,11 @@ fn update(&mut self, message: Message) -> Task<Message> {
         Message::InputChanged(val) => self.new_domain = val,
         
         Message::AddDomain => {
-            if !self.new_domain.is_empty() {
-                let cleaned = self.new_domain
-                    .replace("https://", "").replace("http://", "").replace("www.", "")
-                    .split('/').next().unwrap_or("").trim().to_string();
+if !self.new_domain.is_empty() {
+        let cleaned = self.new_domain
+            .to_lowercase() // Tambahkan ini agar sinkron dengan database
+            .replace("https://", "").replace("http://", "").replace("www.", "")
+            .split('/').next().unwrap_or("").trim().to_string();
 
                 if !cleaned.is_empty() {
                     if let Ok(id) = save_domain_to_db(&cleaned) {
@@ -232,76 +231,113 @@ fn update(&mut self, message: Message) -> Task<Message> {
         }
 
         // --- KEAMANAN ---
-        Message::CheckViolation(info) => {
-            // Gunakan info agar warning hilang
-            if self.is_running && !self.is_hard_locked {
-                let keywords: Vec<String> = self.blacklist.iter()
-                    .map(|e| e.domain.to_lowercase().replace("www.", "").replace(".com", ""))
-                    .collect();
+Message::CheckViolation(info) => {
+    // Pastikan pengecekan hanya berjalan jika Guard sedang AKTIF dan belum terkunci
+    if self.is_running && !self.is_hard_locked {
+        // 1. Ambil daftar domain dari memori untuk diperiksa
+        let domains: Vec<String> = self.blacklist.iter()
+            .map(|e| e.domain.clone())
+            .collect();
 
-                if let Some(detected) = self.check_window_titles(keywords) {
-                    println!("Pelanggaran: {} | Status: {}", detected, info);
-                    let _ = increment_hits_db(&detected); 
-                    self.violation_count += 1;
-                    self.is_hard_locked = true;
-                    return iced::window::get_latest().and_then(|id| {
-                        iced::window::change_mode(id, iced::window::Mode::Fullscreen)
-                    });
-                }
+        // 2. Jalankan fungsi pengecekan judul jendela
+        if let Some(detected_domain) = self.check_window_titles(domains) {
+            // LOG TERMINAL: Memberitahu domain apa yang tertangkap
+            println!("[WATCHDOG] Pelanggaran Terdeteksi: {} | Status: {}", detected_domain, info);
+            
+            // 3. FITUR HITS: Update ke Database
+            match increment_hits_db(&detected_domain) {
+                Ok(_) => println!("[DATABASE] Sukses: Hits untuk '{}' bertambah.", detected_domain),
+                Err(e) => println!("[DATABASE] Gagal update hits: {:?}", e),
             }
+
+            // 4. SYNC UI: Update angka hits di memori agar tabel langsung berubah
+            if let Some(entry) = self.blacklist.iter_mut().find(|e| e.domain == detected_domain) {
+                entry.hits += 1;
+                println!("[UI] Sinkronisasi Berhasil: Hits di layar kini {}", entry.hits);
+            }
+
+            // 5. KEAMANAN: Aktifkan mode penguncian (Hard Lock)
+            self.violation_count += 1;
+            self.is_hard_locked = true;
+            
+            // 6. FULLSCREEN: Paksa jendela menutupi seluruh layar sistem
+            return iced::window::get_latest().and_then(|id| {
+                iced::window::change_mode(id, iced::window::Mode::Fullscreen)
+            });
         }
+    }
+}
 
         Message::PasswordUnlockInput(val) => self.unlock_input = val,
         
-        Message::UnlockSystem => {
-            if self.unlock_input == self.password_admin {
-                self.is_hard_locked = false;
-                self.unlock_input.clear();
-                return iced::window::get_latest().and_then(|id| {
-                    iced::window::change_mode(id, iced::window::Mode::Windowed)
-                });
-            } else {
-                self.unlock_input.clear();
-            }
-        }
+Message::UnlockSystem => {
+    if self.unlock_input == self.password_admin {
+        self.is_hard_locked = false;
+        self.unlock_input.clear();
+        // Kembalikan ke mode Windowed
+        return iced::window::get_latest().and_then(|id| {
+            iced::window::change_mode(id, iced::window::Mode::Windowed)
+        });
+    } else {
+        self.unlock_input.clear();
+    }
+}
         
-        _ => {}
     }
     Task::none()
 }
 
 pub fn subscription(&self) -> iced::Subscription<Message> {
     if self.is_running {
+        // Mengirim pesan setiap 1 detik tanpa hambatan log di sini
         iced::time::every(std::time::Duration::from_millis(1000))
-            .map(|_| Message::CheckViolation("Watchdog Aktif".to_string()))
+            .map(|_| Message::CheckViolation("Watchdog Tick".to_string()))
     } else {
         iced::Subscription::none()
     }
 }
-fn check_window_titles(&self, keywords: Vec<String>) -> Option<String> {
+
+
+fn check_window_titles(&self, domains: Vec<String>) -> Option<String> {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
 
-    // Ambil semua judul jendela yang aktif
-    let output = Command::new("powershell")
-        .args(&[
-            "-NoProfile",
-            "-Command",
-            "Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object -ExpandProperty MainWindowTitle"
-        ])
-        .output();
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    if let Ok(out) = output {
-        let titles = String::from_utf8_lossy(&out.stdout).to_lowercase();
-        
-        for kw in keywords {
-            // Jika judul jendela mengandung kata kunci (misal "youtube")
-            if !kw.is_empty() && titles.contains(&kw) {
-                // Kill SEMUA browser secara paksa
-                let _ = Command::new("taskkill").args(&["/F", "/IM", "chrome.exe"]).spawn();
-                let _ = Command::new("taskkill").args(&["/F", "/IM", "msedge.exe"]).spawn();
-                let _ = Command::new("taskkill").args(&["/F", "/IM", "firefox.exe"]).spawn();
-                return Some(kw);
+// Gunakan ini di dalam check_window_titles Anda
+let output = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+    .arg("-NoProfile")
+    .arg("-Command")
+    .arg("Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object -ExpandProperty MainWindowTitle")
+    .output();
+
+    match output {
+        Ok(out) => {
+            let titles = String::from_utf8_lossy(&out.stdout).to_lowercase();
+            
+            for domain in domains {
+                let cleaned = domain.to_lowercase()
+                    .replace("https://", "")
+                    .replace("http://", "")
+                    .replace("www.", "");
+                
+                let keyword = cleaned.split('.').next().unwrap_or("");
+
+                if !keyword.is_empty() && titles.contains(keyword) {
+                    println!("[MATCH] Terdeteksi jendela: {}", keyword);
+
+                    // Pemblokiran
+                    let _ = Command::new("taskkill").creation_flags(CREATE_NO_WINDOW).args(&["/F", "/IM", "chrome.exe"]).spawn();
+                    let _ = Command::new("taskkill").creation_flags(CREATE_NO_WINDOW).args(&["/F", "/IM", "msedge.exe"]).spawn();
+                    let _ = Command::new("taskkill").creation_flags(CREATE_NO_WINDOW).args(&["/F", "/IM", "firefox.exe"]).spawn();
+                    
+                    return Some(domain); // Mengembalikan domain asli untuk DB
+                }
             }
+        }
+        Err(e) => {
+            println!("[CRITICAL ERROR] Gagal akses PowerShell: {}. Pastikan path benar!", e);
         }
     }
     None
@@ -718,6 +754,20 @@ fn update_password_db(pass: &str) -> rusqlite::Result<()> {
 
 fn increment_hits_db(domain: &str) -> rusqlite::Result<()> {
     let conn = Connection::open("guard_data.db")?;
-    conn.execute("UPDATE blacklist SET hits = hits + 1 WHERE domain = ?", params![domain])?;
+    
+    // Log terminal
+    println!("[DATABASE] Mencoba increment hits untuk: {}", domain);
+    
+    let rows_affected = conn.execute(
+        "UPDATE blacklist SET hits = hits + 1 WHERE domain = ?",
+        params![domain],
+    )?;
+
+    if rows_affected == 0 {
+        println!("[DATABASE] Warning: Domain '{}' tidak ditemukan di tabel!", domain);
+    } else {
+        println!("[DATABASE] Sukses! Hits bertambah untuk '{}'.", domain);
+    }
+    
     Ok(())
 }
