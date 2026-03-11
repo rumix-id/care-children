@@ -7,8 +7,9 @@
 
 
 
+### 📦 Folder Structure
 
-
+```text
 care-children
 ├── .git/            # Git tidy folder (automatically exists after git init)
 ├── .gitignore       # File to exclude the target/db folder from GitHub
