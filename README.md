@@ -5,20 +5,20 @@ Care Children System is a Windows-based parental control application built using
 ---
 
 ## 🌐How to use
-*  Run the program with Run as Administrator** 
-* ** Enter the default password admin123** 
-* ** Enter a list of blocked websites** 
-* ** Click start protection (The program runs stealthily)** 
-* ** To reopen, press CTRL+SHIFT+L** 
+*  Run the program with Run as Administrator
+*  Enter the default password admin123
+*  Enter a list of blocked websites
+*  Click start protection (The program runs stealthily)
+*  To reopen, press CTRL+SHIFT+L
 
 ## 🚀 Main Features
 
-* ** HTTPS & DNS Filtering**: Monitors and blocks access to prohibited domains.
-* ** Stealth Mode**: The application runs in the background without a console window (pure GUI).
-* ** Admin Protection**: Equipped with a password system to prevent children from changing settings.
-* ** Auto-start**: Integrated with the Windows Registry to automatically activate when the computer is turned on.
-* ** System Integration**: Automatically manages Firewall and DNS Cache rules.
-* ** Modern UI **: Clean and intuitive interface using the `Iced` library.
+* HTTPS & DNS Filtering: Monitors and blocks access to prohibited domains.
+* Stealth Mode: The application runs in the background without a console window (pure GUI).
+* Admin Protection: Equipped with a password system to prevent children from changing settings.
+* Auto-start: Integrated with the Windows Registry to automatically activate when the computer is turned on.
+* System Integration: Automatically manages Firewall and DNS Cache rules.
+* Modern UI : Clean and intuitive interface using the `Iced` library.
 
 ---
 
