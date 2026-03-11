@@ -32,8 +32,6 @@ Inside the release folder, you will find 3 main files:
 * **Privileges**: Requires **Administrator** privileges.
 * **Dependency**: Microsoft Edge WebView2 Runtime (usually already present on Windows 10/11).
 
----
-
 ## 🛠️ Development Guide (Developer)
 
 If you want to recompile from source:
