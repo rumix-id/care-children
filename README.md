@@ -25,4 +25,4 @@ care-children
 └── release/
 ├── care-children.exe     # Compiled application files
 ├── upx                   # Place the UPX folder here
-└── compress.bat          # Script for UPX compression
+└── compile.exe          # Script for UPX compression
