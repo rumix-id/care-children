@@ -1,4 +1,5 @@
-# 🛡️ Care Children System
+![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)
+# 🛡️ Care Children
 
 Care Children System is a Windows-based parental control application built using the Rust programming language. This application is designed to create a safe internet environment for children by automatically blocking harmful content and running silently (stealth mode).
 
