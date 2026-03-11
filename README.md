@@ -6,10 +6,10 @@ Care Children System is a Windows-based parental control application built using
 
 ## 🌐How to use
 *  Run the program with Run as Administrator
-*  Enter the default password admin123
+*  Enter the default password **admin123**
 *  Enter a list of blocked websites
 *  Click start protection (The program runs stealthily)
-*  To reopen, press CTRL+SHIFT+L
+*  To reopen, press **CTRL+SHIFT+L**
 
 ## 🚀 Main Features
 
