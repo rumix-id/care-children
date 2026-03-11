@@ -11,8 +11,6 @@
 
 ```text
 care-children
-├── .git/            # Git tidy folder (automatically exists after git init)
-├── .gitignore       # File to exclude the target/db folder from GitHub
 ├── Cargo.toml       # Project & library configuration (dependencies)
 ├── Cargo.lock       # Library version lock
 ├── build.rs         # Script to insert manifest/icon during build
