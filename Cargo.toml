@@ -1,9 +1,33 @@
 [package]
-name = "guard-children-internet"
-version = "0.1.0"
+name = "care-children"
+version = "1.0.0"
+authors = ["Rumix-id"]
 edition = "2024"
+description = "Parental Control System for Child Safety"
+repository = "https://github.com/username/protect-children"
+license = "MIT"
+keywords = ["parental-control", "security", "rust", "dns-blocker"]
 
 [dependencies]
 iced = { version = "0.13.1", features = ["tokio", "advanced", "image", "svg"] }
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 device_query = "4.0.1"
+tiny_http = "0.12"
+sysinfo = "0.38.3"
+rcgen = "0.13"
+rustls = "0.23"
+tokio-rustls = "0.26"
+tokio = { version = "1.0", features = ["full"] }
+rustls-pki-types = "1.14.0"
+rustls-pemfile = "2.2.0"
+global-hotkey = "0.5"
+user32-sys = "0.2"
+winapi = { version = "0.3", features = ["winuser"] }
+winreg = "0.52"
+
+[build-dependencies]
+embed-resource = "2.5"
+
+[dependencies.windows]
+version = "0.52"
+features = ["Win32_Security_Cryptography", "Win32_Foundation","Win32_NetworkManagement_Dns","Win32_System_LibraryLoader"]

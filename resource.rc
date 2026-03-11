@@ -1,0 +1,31 @@
+1 24 "app.manifest"
+1 ICON "assets/icon.ico"
+
+1 VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEFLAGSMASK   0X3FL
+FILEFLAGS       0X0L
+FILEOS          0X40004L
+FILETYPE        0X1L
+FILESUBTYPE     0X0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0" // Language: US English
+        BEGIN
+            VALUE "CompanyName",      "Rumix Tool"
+            VALUE "FileDescription",  "Care Children System - Internet Guard"
+            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "InternalName",     "protect-children"
+            VALUE "LegalCopyright",   "Copyright (c) 2026"
+            VALUE "OriginalFilename", "Care-children.exe"
+            VALUE "ProductName",      "Care Children System"
+            VALUE "ProductVersion",   "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
