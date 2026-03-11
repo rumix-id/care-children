@@ -48,7 +48,7 @@ git clone [https://github.com/username-kamu/guard-children-internet.git](https:/
 ```
 # Go to folder
 ```go
-cd cara-children
+cd care-children
 ```
 # Build the release version
 ```go
