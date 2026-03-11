@@ -2,8 +2,6 @@
 
 Care Children System is a Windows-based parental control application built using the Rust programming language. This application is designed to create a safe internet environment for children by automatically blocking harmful content and running silently (stealth mode).
 
----
-
 ## 🌐How to use
 *  Run the program with Run as Administrator
 *  Enter the default password **admin123**
@@ -20,8 +18,6 @@ Care Children System is a Windows-based parental control application built using
 * System Integration: Automatically manages Firewall and DNS Cache rules.
 * Modern UI : Clean and intuitive interface using the `Iced` library.
 
----
-
 ## 📁 Distribution File Structure
 
 Inside the release folder, you will find 3 main files:
@@ -29,8 +25,6 @@ Inside the release folder, you will find 3 main files:
 1. **`care-children.exe`**: The main program. Must be run as **Administrator**.
 2. **`compile.exe`**: A program for developers to reduce the size of `.exe` files (using UPX).
 3. **`cleanup-care-children.exe`**: A program to remove all traces of the program (Registry, Firewall, & Tasks) from the system.
-
----
 
 ## ⚙️ System Requirements
 
@@ -81,3 +75,5 @@ care-children
 ├── care-children.exe     # Compiled application files
 ├── upx                   # Place the UPX folder here
 └── compile.exe          # Script for UPX compression
+```
+## ⚠️ Disclaimer: This program is created purely for educational purposes and legal parental supervision. Any misuse of this program to violate the privacy of others without permission is the responsibility of each user.
