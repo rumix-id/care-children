@@ -24,6 +24,7 @@ global-hotkey = "0.5"
 user32-sys = "0.2"
 winapi = { version = "0.3", features = ["winuser"] }
 winreg = "0.52"
+include_dir = "0.7"
 
 [build-dependencies]
 embed-resource = "2.5"

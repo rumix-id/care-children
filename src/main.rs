@@ -33,6 +33,7 @@ use winreg::enums::*;
 use winreg::RegKey;
 use std::env;
 
+use include_dir::{include_dir, Dir};
 
 use std::process::{ExitStatus};
 use std::os::windows::process::CommandExt;
@@ -58,6 +59,24 @@ const COLOR_GUARD_STOP: Color = Color::from_rgb(0.8, 0.2, 0.2);
 const COLOR_ADD: Color = Color::from_rgb(0.2, 0.6, 0.2);
 const COLOR_DELETE: Color = Color::from_rgb(0.8, 0.2, 0.2);
 const COLOR_DISABLED: Color = Color::from_rgb(0.8, 0.8, 0.8);
+
+static ASSETS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets");
+
+fn get_img(name: &str) -> image::Handle {
+    let file = ASSETS_DIR
+        .get_file(name)
+        .unwrap_or_else(|| panic!("Aset {} not found assets!", name));
+    image::Handle::from_bytes(file.contents().to_vec())
+}
+
+// Helper khusus untuk format SVG
+fn get_svg(name: &str) -> svg::Handle {
+    let file = ASSETS_DIR
+        .get_file(name)
+        .unwrap_or_else(|| panic!("Aset {} not found assets!", name));
+    svg::Handle::from_memory(file.contents().to_vec())
+}
+
 
 fn run_hidden_command(program: &str, args: &[&str]) -> std::io::Result<ExitStatus> {
     Command::new(program)
@@ -818,9 +837,9 @@ let _ = run_hidden_command("netsh", &[
             ]
             .spacing(5),
             Space::with_height(Length::Fixed(40.0)),
-            self.menu_button("assets/home.svg", "Overview", Page::Overview),
-            self.menu_button("assets/domain.svg", "Management", Page::Setup),
-            self.menu_button("assets/settings.svg", "Security", Page::Security),
+            self.menu_button("home.svg", "Overview", Page::Overview),
+            self.menu_button("domain.svg", "Management", Page::Setup),
+            self.menu_button("settings.svg", "Security", Page::Security),
             Space::with_height(Length::Fill),
             text("by Rumix Tools").size(10).color([0.7, 0.7, 0.7]),
         ]
@@ -924,7 +943,7 @@ let _ = run_hidden_command("netsh", &[
         let is_selected = self.current_page == page;
         button(
             row![
-                svg(svg::Handle::from_path(icon_path))
+                svg(get_svg(icon_path))
                     .width(Length::Fixed(ICON_SIZE))
                     .height(Length::Fixed(ICON_SIZE))
                     .style(move |_, _| svg::Style {
@@ -986,20 +1005,20 @@ let _ = run_hidden_command("netsh", &[
             Space::with_height(Length::Fixed(GAP_RULE_TO_CONTENT)),
             stack![
                 image(if self.is_running {
-                    "assets/1.png"
+                    get_img("1.png")
                 } else {
-                    "assets/2.png"
+                    get_img("2.png")
                 })
                 .width(Length::Fixed(600.0))
                 .height(Length::Fixed(130.0))
                 .content_fit(iced::ContentFit::Cover),
                 container(
                     row![
-                        svg(svg::Handle::from_path(if self.is_running {
-                            "assets/on.svg"
+                        svg(if self.is_running {
+                            get_svg("on.svg")
                         } else {
-                            "assets/off.svg"
-                        }))
+                            get_svg("off.svg")
+                        })
                         .width(Length::Fixed(60.0))
                         .height(Length::Fixed(60.0)),
                         column![
