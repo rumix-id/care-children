@@ -66,7 +66,7 @@ care-children
 ├── build.rs         # Script to insert manifest/icon during build
 ├── resource.rc      # Resource script (Icon & Metadata)
 ├── app.manifest     # Windows Administrator Permissions
-├── cleanup_program.bat   # Script to remove regedit & startup traces
+├── cleanup_program.exe   # Script to remove regedit & startup traces
 ├── assets/               # Static assets folder
 │ └── icon-img            # Icon and image
 ├── src/                  # Main source code folder
