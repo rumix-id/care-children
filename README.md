@@ -77,4 +77,10 @@ care-children
 ├── upx                   # Place the UPX folder here
 └── compile.exe          # Script for UPX compression
 ```
+### Expected future updates:
+- Works in Firefox
+- Bypass VPN
+- Disable End Task
+- Update libraries with the latest Rust
+  
 ## ⚠️ Disclaimer: This program is created purely for educational purposes and legal parental supervision. Any misuse of this program to violate the privacy of others without permission is the responsibility of each user.
